@@ -115,62 +115,69 @@ def receive_file(host, port):
 
 
 
+def findIndex(arr,num):
+    for i in range(len(arr)):
+        if arr[i]==num:
+            return i
+    return -1
+
 try:
-    while True:
-        number = socketRecvNumber(client1,1024)
-        print(number)
-        fileList=socketRecvString(client1,number)
+
+        size = socketRecvNumber(client1, 1024)
+        fileList=socketRecvString(client1, size)
         print("Danh sach cac file co the download la:\n")
         print(fileList)
 
         start_time = time.time()
-        oldSize=0
+        oldSize=getFileSize("Client/input.txt")
         newSize=0
 
         while True:
-            if isChange("../../../../../../../../../../DoAn/TCP/Client/input.txt", oldSize):
+            if isChange("Client/input.txt", oldSize):
 
-                newSize=getFileSize("../../../../../../../../../../DoAn/TCP/Client/input.txt")
+                newSize=getFileSize("Client/input.txt")
                 changeSize=newSize-oldSize
 
 
-                split=split_string(fileDataFrom("../../../../../../../../../../DoAn/TCP/Client/input.txt", oldSize), '\n')
+                split=split_string(fileDataFrom("Client/input.txt", oldSize), '\n')
 
                 for i in range(len(split)):
-                    print("#")
-                    print(split[i])
-                    print("#")
+
                     if split[i] != "":
 
-                        socketSendNumber(len(split[i]), client1)
-                        socketSendString(split[i], client1)
-
-                        # Nhận tên file
-                        filename = client1.recv(1024).decode()
-                        client1.sendall(b"ACK")  # Gửi phản hồi
+                        socketSendNumber(len(split[i]), client1) # Gui do dai ten file
+                        socketSendString(split[i], client1) # Gui ten file
 
                         # Nhận kích thước file
                         filesize = int(client1.recv(1024).decode())
+                        chunkSize=filesize//4
                         client1.sendall(b"ACK")  # Gửi phản hồi
 
 
-                        j="Client/"+filename
-                        # Nhận dữ liệu file
-                        received = 0
-                        with open(j, "wb") as f:
-                            while received < filesize:
-                                chunk = client1.recv(1024)
-                                if not chunk:
-                                    break
-                                f.write(chunk)
-                                received += len(chunk)
-                                print(received/filesize)
+                        Des="Client/"+split[i]
 
-                        print(f"Đã nhận file {filename} ({filesize} bytes).")
-                        f.close()
+                        receiver=[]  # Noi dung tung chunk
+                        oder=[]  # Thu tu cac chunk
+
+                        receiver.append(client1.recv(chunkSize))
+                        oder.append(int(client1.recv(1024).decode()))
+                        receiver.append(client2.recv(chunkSize))
+                        oder.append(int(client2.recv(1024).decode()))
+                        receiver.append(client3.recv(chunkSize))
+                        oder.append(int(client3.recv(1024).decode()))
+                        receiver.append(client4.recv(filesize-3*chunkSize))
+                        oder.append(int(client4.recv(1024).decode()))
+
+
+                        with open("Client/"+split[i],"wb") as f:
+                            for i in range(4):
+                                f.write(receiver[findIndex(oder,i)])
+
+
+
                 oldSize=newSize
             else:
-                oldSize=getFileSize("../../../../../../../../../../DoAn/TCP/Client/input.txt")
+                oldSize=getFileSize("Client/input.txt")
             time.sleep(2)
 
 
