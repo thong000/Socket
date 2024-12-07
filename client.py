@@ -1,14 +1,11 @@
 import socket
 import os
 import time
-from cgi import print_directory
 
-
-def fileData(file_path):
+def getFileSize(file_path):
     try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()  # Đọc toàn bộ nội dung tệp
-        return content
+        file_size = os.path.getsize(file_path)  # Lấy kích thước tệp tính theo byte
+        return file_size
     except FileNotFoundError:
         print(f"Tệp {file_path} không tồn tại.")
         return None
@@ -25,44 +22,15 @@ def fileDataFrom(file_path, size):
     except FileNotFoundError:
         print(f"Tệp {file_path} không tồn tại.")
         return None
-def split_string(input_string, delimiter):
-    # Sử dụng phương thức split() để chia chuỗi theo ký tự phân cách
-    result = input_string.split(delimiter)
-    return result
 
-def getFileSize(file_path):
+def fileData(file_path):
     try:
-        file_size = os.path.getsize(file_path)  # Lấy kích thước tệp tính theo byte
-        return file_size
+        with open(file_path, 'r', encoding='utf-8') as file:
+            content = file.read()  # Đọc toàn bộ nội dung tệp
+        return content
     except FileNotFoundError:
         print(f"Tệp {file_path} không tồn tại.")
         return None
-
-
-def socketSendNumber(num,soc):
-    soc.sendall(str(num).encode())
-
-def socketSendString(string,soc):
-    soc.sendall(bytes(string, "utf8"))
-
-def socketRecvNumber(soc,size):
-    data = soc.recv(size)
-    num = int(data.decode())
-    return num
-
-def socketRecvString(soc,size):
-    data = soc.recv(size)
-    return data.decode()
-
-def writeStringToFile(file_path, content):
-    try:
-        # Mở tệp ở chế độ ghi ('w'). Nếu tệp đã tồn tại, nó sẽ bị ghi đè.
-        with open(file_path, 'a', encoding='utf-8') as file:
-            file.write(content)  # Ghi chuỗi vào tệp
-        print(f"Đã ghi nội dung vào tệp {file_path}")
-    except Exception as e:
-        print(f"Lỗi khi ghi tệp: {e}")
-
 
 def isChange(fileName,oldSize):
     curSize=getFileSize(fileName)
@@ -70,119 +38,157 @@ def isChange(fileName,oldSize):
         return False
     return curSize!=oldSize
 
+def socketRecvDataWithSeq(client, server_address, size, type):
+    global ack
 
+    max_retries = 5
+    retries = 0
+
+    while(retries < max_retries):
+        packet, _ = client.recvfrom(size + 100)
+        seq_number, data = packet.split(b"|", 1)
+        seq = int(seq_number.decode())
+
+        if(seq == ack):
+            client.sendto(str(ack).encode(), server_address)
+            ack += 1
+            if not data:
+                return None
+            if type == 2:
+                return data
+            if type == 1:  
+                return int(data.decode())
+            else:
+                return data.decode()
+        else:
+            client.sendto(str(ack - 1).encode(), server_address)
+            retries += 1
+        
+def socketSendDataWithSeq(client, server, data):
+    global seq
+    
+    if isinstance(data, bytes):  # Nếu dữ liệu là byte
+        packet = f"{seq}|".encode() + data
+    else:  # Nếu dữ liệu là chuỗi hoặc số
+        packet = f"{seq}|{data}".encode()
+
+    max_retries = 5
+    timeout = 2
+    retries = 0
+
+    while(retries < max_retries):
+        client.sendto(packet, server)
+        client.settimeout(timeout)
+
+        try: 
+            ack, _ = client.recvfrom(1024)  # Chờ ACK từ server
+            ack_number = int(ack.decode())
+
+            if ack_number == seq:
+                print(f"[INFO] ACK received for seq {seq}")
+                seq += 1
+                break 
+        except socket.timeout:
+            retries += 1
+        
+    if retries == max_retries:
+        print(f"[ERROR] Failed to send seq {seq}")
+        return
+
+def socketSendNumber(num, server, client):
+    server.sendto(str(num).encode(), client)
+
+def socketSendString(string, server, client):
+    server.sendto(string.encode(), client)
+
+def split_string(input_string, delimiter):
+    # Sử dụng phương thức split() để chia chuỗi theo ký tự phân cách
+    result = input_string.strip().split(delimiter)
+    return result
+
+def get_num(key, fileList):
+    for i in range(len(fileList)):
+        if key == fileList[i]:
+            return i 
+    return -1
 
 HOST = "127.0.0.1"  # IP adress server
 PORT = 65432        # port is used by the server
 
-client1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client4 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_address = (HOST, PORT)
-print("Client connect to server with port: " + str(PORT))
-client1.connect(server_address)
-client2.connect(server_address)
-client3.connect(server_address)
-client4.connect(server_address)
+seq = 0
+ack = 0
 
-
-def receive_file(host, port):
-    # Tạo socket
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((host, port))
-        print("Đã kết nối tới server.")
-
-        # Nhận tên file
-        filename = s.recv(1024).decode()
-        s.sendall(b"ACK")  # Gửi phản hồi
-
-        # Nhận kích thước file
-        filesize = int(s.recv(1024).decode())
-        s.sendall(b"ACK")  # Gửi phản hồi
-
-        # Nhận dữ liệu file
-        received = 0
-        with open(f"received_{filename}", "wb") as f:
-            while received < filesize:
-                chunk = s.recv(1024)
-                if not chunk:
-                    break
-                f.write(chunk)
-                received += len(chunk)
-
-        print(f"Đã nhận file {filename} ({filesize} bytes).")
-
-
-
-def findIndex(arr,num):
-    for i in range(len(arr)):
-        if arr[i]==num:
-            return i
-    return -1
+client.sendto(b"GET_FILE", server_address)
 
 try:
 
-        size = socketRecvNumber(client1, 1024)
-        fileList=socketRecvString(client1, size)
-        print("Danh sach cac file co the download la:\n")
-        print(fileList)
+        size = socketRecvDataWithSeq(client, server_address, 1024, 1)
+        print(size)
+        data = socketRecvDataWithSeq(client, server_address, size, 0)
+        print("Danh sach cac file co the download la:")
+        fileList = split_string(data, '\n')
+        fileSent = []
+        for i in range(len(fileList)):
+            fileSent.append(0)
+            print(fileList[i], fileSent[i], sep = ' ')
 
         start_time = time.time()
-        oldSize=getFileSize("Client/input.txt")
-        newSize=0
+        oldSize = getFileSize("Client/input.txt")
+        newSize = 0
 
         while True:
             if isChange("Client/input.txt", oldSize):
 
-                newSize=getFileSize("Client/input.txt")
-                changeSize=newSize-oldSize
+                newSize = getFileSize("Client/input.txt")
+                changeSize = newSize - oldSize
 
-
-                split=split_string(fileDataFrom("Client/input.txt", oldSize), '\n')
+                split = split_string(fileData("Client/input.txt"), '\n')
+                #print(len(split))
 
                 for i in range(len(split)):
-
                     if split[i] != "":
 
-                        socketSendNumber(len(split[i]), client1) # Gui do dai ten file
-                        socketSendString(split[i], client1) # Gui ten file
+                        k = get_num(split[i], fileList)
 
-                        # Nhận kích thước file
-                        filesize = int(client1.recv(1024).decode())
-                        chunkSize=filesize//4
-                        client1.sendall(b"ACK")  # Gửi phản hồi
+                        if k == -1:
+                            print("Khong ton tai file, vui long kiem tra ten file!")
+                            break
+
+                        if fileSent[k] == 1:
+                            continue
+
+                        fileSent[k] = 1
+
+                        socketSendDataWithSeq(client, server_address, len(split[i]))
+                        socketSendDataWithSeq(client, server_address, split[i])
+
+                        #client1.sendall(b"ACK")  # Gửi phản hồi
+                        filesize = socketRecvDataWithSeq(client, server_address, 1024, 1)
+                        print(filesize)
+
+                        Des = "Client/"+split[i]
+
+                        length = 0
+                        
+
+                        with open("Client/" + split[i],"wb") as f:
+                            while(length < filesize):
+                                receiver = socketRecvDataWithSeq(client, server_address, 1024, 2)
+                                if not receiver:
+                                    break
+                                length += len(receiver)
+                                f.write(receiver)
 
 
-                        Des="Client/"+split[i]
 
-                        receiver=[]  # Noi dung tung chunk
-                        oder=[]  # Thu tu cac chunk
-
-                        receiver.append(client1.recv(chunkSize))
-                        oder.append(int(client1.recv(1024).decode()))
-                        receiver.append(client2.recv(chunkSize))
-                        oder.append(int(client2.recv(1024).decode()))
-                        receiver.append(client3.recv(chunkSize))
-                        oder.append(int(client3.recv(1024).decode()))
-                        receiver.append(client4.recv(filesize-3*chunkSize))
-                        oder.append(int(client4.recv(1024).decode()))
-
-
-                        with open("Client/"+split[i],"wb") as f:
-                            for i in range(4):
-                                f.write(receiver[findIndex(oder,i)])
-
-
-
-                oldSize=newSize
+                oldSize = newSize
             else:
-                oldSize=getFileSize("Client/input.txt")
+                oldSize = getFileSize("Client/input.txt")
             time.sleep(2)
 
-
 except KeyboardInterrupt:
-    client1.close()
+    client.close()
 finally:
-    client1.close()
-
+    client.close()

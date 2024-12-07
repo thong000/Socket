@@ -1,7 +1,6 @@
 import socket
 import os
-import multiprocessing
-
+import time
 
 def fileData(file_path):
     try:
@@ -12,16 +11,6 @@ def fileData(file_path):
         print(f"Tệp {file_path} không tồn tại.")
         return None
 
-def fileDataFrom(file_path,index):
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()  # Đọc toàn bộ nội dung tệp
-        return content[index]
-    except FileNotFoundError:
-        print(f"Tệp {file_path} không tồn tại.")
-        return None
-
-
 def getFileSize(file_path):
     try:
         file_size = os.path.getsize(file_path)  # Lấy kích thước tệp tính theo byte
@@ -30,123 +19,102 @@ def getFileSize(file_path):
         print(f"Tệp {file_path} không tồn tại.")
         return None
 
+def socketSendDataWithSeq(server, client, data):
+    global seq
+    
+    if isinstance(data, bytes):  # Nếu dữ liệu là byte
+        packet = f"{seq}|".encode() + data
+    else:  # Nếu dữ liệu là chuỗi hoặc số
+        packet = f"{seq}|{data}".encode()
 
-def socketSendNumber(num,soc):
-    soc.sendall(str(num).encode())
+    max_retries = 5
+    timeout = 2
+    retries = 0
 
-def socketSendString(string,soc):
-    soc.sendall(bytes(string, "utf8"))
+    while(retries < max_retries):
+        server.sendto(packet, client)
+        #server.settimeout(timeout)
 
-def socketRecvNumber(soc,size):
-        data = soc.recv(size)
-        number = int(data.decode())
-        return number
+        try: 
+            ack, _ = server.recvfrom(1024)  # Chờ ACK từ client
+            ack_number = int(ack.decode())
 
-def socketRecvString(soc,size):
-        data = soc.recv(size)
-        return data.decode()
+            if ack_number == seq:
+                print(f"[INFO] ACK received for seq {seq}")
+                seq += 1
+                break 
+        except socket.timeout:
+            retries += 1
+        
+    if retries == max_retries:
+        print(f"[ERROR] Failed to send seq {seq}")
+        return
 
-def writeStringToFile(file_path, content):
-        try:
-            # Mở tệp ở chế độ ghi ('w'). Nếu tệp đã tồn tại, nó sẽ bị ghi đè.
-            with open(file_path, 'a', encoding='utf-8') as file:
-                file.write(content)  # Ghi chuỗi vào tệp
-            print(f"Đã ghi nội dung vào tệp {file_path}")
-        except Exception as e:
-            print(f"Lỗi khi ghi tệp: {e}")
+def socketRecvNumber(server, size):
+    data, _ = server.recvfrom(size)
+    num = int(data.decode())
+    return num
 
+def socketRecvString(server, size):
+    data, _ = server.recvfrom(size)
+    return data.decode()
 
-def send_file(filename,connection):
-    # Tạo socket
-        with connection[0]:
-            # Gửi tên file
-            connection[0].sendall(filename.encode())
-            connection[0].recv(1024)  # Chờ ACK từ client
+def socketRecvDataWithSeq(server, client, size, type):
+    global ack
 
-            # Gửi kích thước file
-            filesize = os.path.getsize("Server/"+filename)
-            connection[0].sendall(str(filesize).encode())
-            connection[0].recv(1024)  # Chờ ACK từ client
+    max_retries = 5
+    retries = 0
 
-            # Gửi dữ liệu file
-            with open("Server/"+filename, "rb") as f:
-                while chunk := f.read(1024):  # Đọc từng chunk 1024 byte
-                    connection[0].sendall(chunk)
-            print("Đã gửi file.")
+    while(retries < max_retries):
+        packet, _ = server.recvfrom(size + 100)
+        if not packet:
+            return None
+        seq_number, data = packet.split(b"|", 1)
+        seq = int(seq_number.decode())
 
+        if(seq == ack):
+            server.sendto(str(ack).encode(), client)
+            ack += 1
+            if type == 1:  
+                return int(data.decode())
+            else:
+                return data.decode()
+        else:
+            server.sendto(str(ack - 1).encode(), client)
+            retries += 1
+        
+seq = 0
+ack = 0
 
-        f.close()
-
-
-def send(connection,chunk,seq):
-    connection.sendall(chunk)  # Gui noi dung chunk
-    connection.sendall(str(seq).encode())   # Gui seq
-
-
-def handle_client(connection):
-    while True:
-            length = int((connection[0].recv(1024).decode()))  # Nhan do dai cua ten file
-            fileName=socketRecvString(connection[0],length)  # Nhan ten cua file can tai
-
-
-            # Gửi kích thước file
-            fileSize = os.path.getsize("Server/" + fileName)
-            connection[0].sendall(str(fileSize).encode())
-            connection[0].recv(1024)  # Chờ ACK từ client
-
-            # Gửi dữ liệu file
-            chunkSize=fileSize//4
-            chunk=[]
-            # Doc file cho tung chunk
-            with open("Server/" + fileName, "rb") as f:
-                for i in range(3):
-                    chunk.append(f.read(chunkSize))
-                # Truong hop file size khong chia het cho 4
-                chunk.append(f.read(fileSize-3*chunkSize))
-
-            # Tao cac ham gui song song
-            sender_1 = multiprocessing.Process(target=send, args=(connection[0], chunk[0], 0))
-            sender_2 = multiprocessing.Process(target=send, args=(connection[1], chunk[1], 1))
-            sender_3 = multiprocessing.Process(target=send, args=(connection[2], chunk[2], 2))
-            sender_4 = multiprocessing.Process(target=send, args=(connection[3], chunk[3], 3))
-
-            # Bat dau gui file
-            sender_1.start()
-            sender_2.start()
-            sender_3.start()
-            sender_4.start()
-
-
-
-
-
-
-
-def start_server(host, port,file):
+def start_server(host, port, file):
+    global seq
 
     # Tao socket chinh va lang nghe client
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server.bind((host, port))
-    server.listen(5)
     print(f"[INFO] Server listening on {host}:{port}")
 
 
     while True:
+        data, addr = server.recvfrom(1024)
+        print(f"[INFO] Received request from {addr}")
 
-        # Tao 4 socket va chap nhan 4 connection
-        client_socket=[]
-        for i in range(4):
-            coon, addr = server.accept()
-            client_socket.append(coon)
+        if data.decode().strip() == "GET_FILE":
+            # Gui thong tin cua danh sach cac file
+            socketSendDataWithSeq(server, addr, getFileSize(file))
+            socketSendDataWithSeq(server, addr, fileData(file))
 
-        # Gui thong tin cua danh sach cac file
-        socketSendNumber(getFileSize(file), client_socket[0])
-        socketSendString(fileData(file), client_socket[0])
+        while True:
+            length = socketRecvDataWithSeq(server, addr, 1024, 1)  # Nhan do dai cua ten file
+            fileName = socketRecvDataWithSeq(server, addr, length, 2)
+            print(f"[INFO] Received filename from {addr}")
 
+            fileSize = os.path.getsize("Server/" + fileName)
+            socketSendDataWithSeq(server, addr, fileSize)
 
-        process = multiprocessing.Process(target=handle_client, args=(client_socket,))
-        process.start()
-        print(f"[INFO] Active processes: {len(multiprocessing.active_children())}")
+            with open("Server/" + fileName, "rb") as f:
+                while data := f.read(1024):
+                    socketSendDataWithSeq(server, addr, data)
 
 
 
