@@ -1,3 +1,0 @@
-a.jpg
-b.pdf
-c.pptx
