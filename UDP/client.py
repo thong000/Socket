@@ -90,7 +90,9 @@ def socketSendDataWithSeq(client, server, data):
                 break 
         except socket.timeout:
             retries += 1
-        
+    
+    client.settimeout(None)
+
     if retries == max_retries:
         print(f"[ERROR] Failed to send seq {seq}")
         return
@@ -120,7 +122,8 @@ server_address = (HOST, PORT)
 seq = 0
 ack = 0
 
-client.sendto(b"GET_FILE", server_address)
+socketSendDataWithSeq(client, server_address, "GET_FILE")
+#client.sendto(b"GET_FILE", server_address)
 
 try:
 
