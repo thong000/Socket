@@ -1,7 +1,6 @@
 import socket
 import os
 import time
-import select
 
 def getFileSize(file_path):
     try:
@@ -39,31 +38,21 @@ def isChange(fileName,oldSize):
         return False
     return curSize!=oldSize
 
-def clear_buffer(sock):
-    was_blocking = sock.getblocking()
-    sock.setblocking(False)  # Đặt socket về chế độ non-blocking
-
-    try:
-        # Kiểm tra nếu có dữ liệu sẵn để đọc
-        ready = select.select([sock], [], [], 0)
-        if ready[0]:  # Nếu buffer có dữ liệu
-            print("[INFO] Clearing buffer...")
-            while True:
-                try:
-                    data, _ = sock.recvfrom(1024)
-                except BlockingIOError:
-                    break
-    finally:
-        sock.setblocking(was_blocking)
-
 def socketRecvDataWithSeq(client, server_address, size, type):
     global ack
 
-    max_retries = 5
+    max_retries = 10
     retries = 0
 
     while(retries < max_retries):
         packet, _ = client.recvfrom(size + 100)
+        if not packet:
+            return None
+
+        _ack = packet.split(b"|", 1)
+        if len(_ack) != 2: #Nếu file nhận là ack thì bỏ qua. Trong trường hợp lệnh sent phía trước bị dư
+            continue
+
         seq_number, data = packet.split(b"|", 1)
         seq = int(seq_number.decode())
 
@@ -85,8 +74,6 @@ def socketRecvDataWithSeq(client, server_address, size, type):
         
 def socketSendDataWithSeq(client, server, data):
     global seq
-
-    clear_buffer(client)
     
     if isinstance(data, bytes):  # Nếu dữ liệu là byte
         packet = f"{seq}|".encode() + data
@@ -102,13 +89,24 @@ def socketSendDataWithSeq(client, server, data):
         client.settimeout(timeout)
 
         try: 
-            ack, _ = client.recvfrom(1024)  # Chờ ACK từ server
-            ack_number = int(ack.decode())
+            while True:
+                ack_, _ = client.recvfrom(1024)  # Chờ ACK từ server
 
-            if ack_number == seq:
-                print(f"[INFO] ACK received for seq {seq}")
-                seq += 1
-                break 
+                _ack = ack_.split(b"|", 1)
+                if len(_ack) == 2: #Nếu file nhận KHÔNG là ack thì bỏ qua. Trong trường hợp file ACK phía trước bị chậm phía trước bị dư
+                    continue
+
+                ack_number = int(ack_.decode())
+
+                if ack_number == seq:
+                    print(f"[INFO] ACK received for seq {seq}")
+                    seq += 1
+                    break 
+                else:
+                    print(f"[ERROR] Wrong ACK")
+            
+            if ack_number == seq - 1:
+                break
         except socket.timeout:
             retries += 1
     
@@ -116,6 +114,7 @@ def socketSendDataWithSeq(client, server, data):
 
     if retries == max_retries:
         print(f"[ERROR] Failed to send seq {seq}")
+        seq += 1 #Nếu không nhận được file ACK sau n lần gửi ta mặc định client đã nhận được. Vì nếu không nhận được hay nhận được rồi thì ta cũng sẽ không tiếp tục gửi.
         return
 
 def socketSendNumber(num, server, client):
@@ -190,7 +189,6 @@ try:
 
                         #client1.sendall(b"ACK")  # Gửi phản hồi
                         filesize = socketRecvDataWithSeq(client, server_address, 1024, 1)
-                        print(filesize)
 
                         Des = "Client/"+split[i]
 
