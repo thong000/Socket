@@ -31,18 +31,21 @@ def getFileSize(file_path):
         return None
 
 
-def socketSendNumber(num,soc):
+def sendNumber(num, soc):
     soc.sendall(str(num).encode())
 
-def socketSendString(string,soc):
-    soc.sendall(bytes(string, "utf8"))
+def sendString(string, soc):
+    soc.sendall(string.encode('utf-8'))
+def sendByte(byte, soc):
+    soc.sendall(byte)
 
-def socketRecvNumber(soc,size):
+
+def recvNumber(soc, size):
         data = soc.recv(size)
         number = int(data.decode())
         return number
 
-def socketRecvString(soc,size):
+def recvString(soc, size):
         data = soc.recv(size)
         return data.decode()
 
@@ -56,44 +59,33 @@ def writeStringToFile(file_path, content):
             print(f"Lỗi khi ghi tệp: {e}")
 
 
-def send_file(filename,connection):
-    # Tạo socket
-        with connection[0]:
-            # Gửi tên file
-            connection[0].sendall(filename.encode())
-            connection[0].recv(1024)  # Chờ ACK từ client
-
-            # Gửi kích thước file
-            filesize = os.path.getsize("Server/"+filename)
-            connection[0].sendall(str(filesize).encode())
-            connection[0].recv(1024)  # Chờ ACK từ client
-
-            # Gửi dữ liệu file
-            with open("Server/"+filename, "rb") as f:
-                while chunk := f.read(1024):  # Đọc từng chunk 1024 byte
-                    connection[0].sendall(chunk)
-            print("Đã gửi file.")
+def sendChunk(connection, chunk):
+    length=len(chunk)
+    if length<1024:
+        sendByte(chunk,connection)
+    else:
+        temp=0
+        while temp<length:
+            first=temp
+            last=temp+1024
+            if last<length:
+                sendByte(chunk[first:last],connection)
+            else:
+                sendByte(chunk[first:], connection)
+            temp+=1024
 
 
-        f.close()
-
-
-def send(connection,chunk,seq):
-    print(seq)
-    connection.sendall(chunk)  # Gui noi dung chunk
-    #connection.sendall(str(seq).encode())   # Gui seq
 
 
 def handle_client(connection):
     while True:
-            length = int((connection[0].recv(1024).decode()))  # Nhan do dai cua ten file
-            fileName=socketRecvString(connection[0],length)  # Nhan ten cua file can tai
+            length=recvNumber(connection[0],1024) # Nhan do dai cua ten file
+            fileName=recvString(connection[0], length)  # Nhan ten cua file can tai
 
 
             # Gửi kích thước file
             fileSize = os.path.getsize("Server/" + fileName)
             connection[0].sendall(str(fileSize).encode())
-            connection[0].recv(1024)  # Chờ ACK từ client
 
             # Gửi dữ liệu file
             chunkSize=fileSize//4
@@ -106,10 +98,10 @@ def handle_client(connection):
                 chunk.append(f.read(fileSize-3*chunkSize))
 
             # Tao cac ham gui song song
-            sender_1 = multiprocessing.Process(target=send, args=(connection[0], chunk[0], 0))
-            sender_2 = multiprocessing.Process(target=send, args=(connection[1], chunk[1], 1))
-            sender_3 = multiprocessing.Process(target=send, args=(connection[2], chunk[2], 2))
-            sender_4 = multiprocessing.Process(target=send, args=(connection[3], chunk[3], 3))
+            sender_1 = multiprocessing.Process(target=sendChunk, args=(connection[0], chunk[0],))
+            sender_2 = multiprocessing.Process(target=sendChunk, args=(connection[1], chunk[1],))
+            sender_3 = multiprocessing.Process(target=sendChunk, args=(connection[2], chunk[2],))
+            sender_4 = multiprocessing.Process(target=sendChunk, args=(connection[3], chunk[3],))
 
             # Bat dau gui file
             sender_1.start()
@@ -125,24 +117,26 @@ def handle_client(connection):
 
 def start_server(host, port,file):
 
-    # Tao socket chinh va lang nghe client
+    # Tao socket chinh va lang nghe cac client
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((host, port))
     server.listen(5)
-    print(f"[INFO] Server listening on {host}:{port}")
+    print(f"[INFO] Server listening on {host}:{port}\n")
 
 
     while True:
 
         # Tao 4 socket va chap nhan 4 connection
         client_socket=[]
+        addr=""
         for i in range(4):
             coon, addr = server.accept()
             client_socket.append(coon)
+        print(f"[INFO] Connected to {addr}")
 
         # Gui thong tin cua danh sach cac file
-        socketSendNumber(getFileSize(file), client_socket[0])
-        socketSendString(fileData(file), client_socket[0])
+        sendNumber(getFileSize(file), client_socket[0])
+        sendString(fileData(file), client_socket[0])
 
 
         process = multiprocessing.Process(target=handle_client, args=(client_socket,))
@@ -153,4 +147,4 @@ def start_server(host, port,file):
 
 
 if __name__ == "__main__":
-    start_server("192.168.58.76", 65432, "Server/fileList.txt")
+    start_server("127.0.0.1", 65432, "Server/fileList.txt")
