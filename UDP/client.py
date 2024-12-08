@@ -1,6 +1,7 @@
 import socket
 import os
 import time
+import select
 
 def getFileSize(file_path):
     try:
@@ -38,6 +39,23 @@ def isChange(fileName,oldSize):
         return False
     return curSize!=oldSize
 
+def clear_buffer(sock):
+    was_blocking = sock.getblocking()
+    sock.setblocking(False)  # Đặt socket về chế độ non-blocking
+
+    try:
+        # Kiểm tra nếu có dữ liệu sẵn để đọc
+        ready = select.select([sock], [], [], 0)
+        if ready[0]:  # Nếu buffer có dữ liệu
+            print("[INFO] Clearing buffer...")
+            while True:
+                try:
+                    data, _ = sock.recvfrom(1024)
+                except BlockingIOError:
+                    break
+    finally:
+        sock.setblocking(was_blocking)
+
 def socketRecvDataWithSeq(client, server_address, size, type):
     global ack
 
@@ -61,11 +79,14 @@ def socketRecvDataWithSeq(client, server_address, size, type):
             else:
                 return data.decode()
         else:
+            print(f"[INFO] ERROR seq number")
             client.sendto(str(ack - 1).encode(), server_address)
             retries += 1
         
 def socketSendDataWithSeq(client, server, data):
     global seq
+
+    clear_buffer(client)
     
     if isinstance(data, bytes):  # Nếu dữ liệu là byte
         packet = f"{seq}|".encode() + data
@@ -119,7 +140,7 @@ PORT = 65432        # port is used by the server
 
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_address = (HOST, PORT)
-seq = 0
+seq = 10
 ack = 0
 
 socketSendDataWithSeq(client, server_address, "GET_FILE")
@@ -128,7 +149,7 @@ socketSendDataWithSeq(client, server_address, "GET_FILE")
 try:
 
         size = socketRecvDataWithSeq(client, server_address, 1024, 1)
-        print(size)
+        #print(size)
         data = socketRecvDataWithSeq(client, server_address, size, 0)
         print("Danh sach cac file co the download la:")
         fileList = split_string(data, '\n')

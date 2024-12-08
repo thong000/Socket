@@ -1,6 +1,7 @@
 import socket
 import os
 import time
+import select
 
 def fileData(file_path):
     try:
@@ -19,9 +20,28 @@ def getFileSize(file_path):
         print(f"Tệp {file_path} không tồn tại.")
         return None
 
+def clear_buffer(sock):
+    was_blocking = sock.getblocking()
+    sock.setblocking(False)  # Đặt socket về chế độ non-blocking
+
+    try:
+        # Kiểm tra nếu có dữ liệu sẵn để đọc
+        ready = select.select([sock], [], [], 0)
+        if ready[0]:  # Nếu buffer có dữ liệu
+            print("[INFO] Clearing buffer...")
+            while True:
+                try:
+                    data, _ = sock.recvfrom(1024)
+                except BlockingIOError:
+                    break
+    finally:
+        sock.setblocking(was_blocking)
+
 def socketSendDataWithSeq(server, client, data):
     global seq
     
+    clear_buffer(server)
+
     if isinstance(data, bytes):  # Nếu dữ liệu là byte
         packet = f"{seq}|".encode() + data
     else:  # Nếu dữ liệu là chuỗi hoặc số
@@ -53,15 +73,6 @@ def socketSendDataWithSeq(server, client, data):
         print(f"[ERROR] Failed to send seq {seq}")
         return
 
-def socketRecvNumber(server, size):
-    data, _ = server.recvfrom(size)
-    num = int(data.decode())
-    return num
-
-def socketRecvString(server, size):
-    data, _ = server.recvfrom(size)
-    return data.decode()
-
 def socketRecvDataWithSeq(server, size, type):
     global ack
 
@@ -91,7 +102,7 @@ def socketRecvDataWithSeq(server, size, type):
             retries += 1
         
 seq = 0
-ack = 0
+ack = 10
 
 def start_server(host, port, file):
     global seq
@@ -114,6 +125,7 @@ def start_server(host, port, file):
 
         while True:
             length, _ = socketRecvDataWithSeq(server, 1024, 1)  # Nhan do dai cua ten file
+            #print(length)
             fileName, _ = socketRecvDataWithSeq(server, length, 0)
             print(f"[INFO] Received filename from {addr}")
 
