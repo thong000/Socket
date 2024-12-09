@@ -1,9 +1,10 @@
 import socket
 import os
 import time
+from fileinput import filename
 from math import floor
-from multiprocessing import  Process, Pipe
-
+from multiprocessing import  Process, Pipe,Lock
+from operator import truediv
 
 
 def fileDataFrom(file_path, size):
@@ -56,22 +57,25 @@ def isChange(fileName, oldSize):
         return False
     return curSize != oldSize
 
-def receiveChunk(pipe, connection, chunkSize, part, fileName):
+def receiveChunk(pipe, connection, chunkSize, part, fileName,processPipe):
 
         data=b""
-        if chunkSize < 1024:
+        l=chunkSize//1000
+
+        if chunkSize < l:
             data=data + recvByte(connection, chunkSize)
         else:
             temp = 0
             while temp < chunkSize:
-                last = temp + 1024
+                last = temp + l
                 if last < chunkSize:
-                    data=data+recvByte(connection, 1024)
+                    data=data+recvByte(connection, l)
                 else:
-                    data=data+recvByte(connection, chunkSize % 1024)
+                    data=data+recvByte(connection, chunkSize % l)
 
-                temp += 1024
-                print(f"[INFO] Downloading {fileName} part {part}: {floor(temp/chunkSize*100.0)}%")
+                temp += l
+                progress=floor(temp/chunkSize*100.0)
+                processPipe.send(progress)
 
         pipe.send(data)
 
@@ -79,7 +83,35 @@ def receiveChunk(pipe, connection, chunkSize, part, fileName):
 
 
 
+def printProcess(a,b,c,d,pipe1,pipe2,pipe3,pipe4,fileName):
 
+
+    msg1=0
+    msg2=0
+    msg3=0
+    msg4=0
+
+    while a.is_alive() or b.is_alive() or c.is_alive() or d.is_alive():
+        if pipe1.poll():
+            msg1 = pipe1.recv()
+        if pipe2.poll():
+            msg2 = pipe2.recv()
+        if pipe3.poll():
+            msg3 = pipe3.recv()
+        if pipe4.poll():
+            msg4 = pipe4.recv()
+
+        # Sử dụng \r để in lại 4 dòng cố định
+        print(
+            f"\r[INFO] Downloading {fileName} | "
+            f"Part 1: {msg1}% | "
+            f"Part 2: {msg2}% | "
+            f"Part 3: {msg3}% | "
+            f"Part 4: {msg4}%    ",end="")
+
+
+        if msg1>=100 and msg2>=100 and msg3>=100 and msg4>=100:
+            break
 
 
 def start_client(serverIP,serverPort,folder):
@@ -100,6 +132,7 @@ def start_client(serverIP,serverPort,folder):
 
         start_time = time.time()
         oldSize = getFileSize(folder+"input.txt")
+        downloaded=[]
 
 
         while True:
@@ -109,8 +142,12 @@ def start_client(serverIP,serverPort,folder):
                 changes = split_string(fileDataFrom(folder+"input.txt", oldSize), '\n')
 
                 for i in range(len(changes)):
-
-                    if changes[i] != "":
+                    flag=True
+                    if changes[i] in downloaded:
+                        flag=False
+                        print(f"[INFO] File {changes[i]} da duoc download")
+                    if changes[i] != "" and flag :
+                        downloaded.append(changes[i])
                         sendNumber(len(changes[i]), receiver[0])  # Gui do dai ten file
                         sendString(changes[i], receiver[0])  # Gui ten file
 
@@ -119,21 +156,26 @@ def start_client(serverIP,serverPort,folder):
                         if filesize!=-1:
 
                             chunkSize = filesize // 4
-
+                            lock = Lock() 
                             output_1, input_1 = Pipe()
                             output_2, input_2 = Pipe()
                             output_3, input_3 = Pipe()
                             output_4, input_4 = Pipe()
 
+                            progress1, p1=Pipe()
+                            progress2, p2=Pipe()
+                            progress3, p3=Pipe()
+                            progress4, p4=Pipe()
+
 
                             receiver1 = Process(target=receiveChunk,
-                                                               args=(input_1,receiver[0], chunkSize,1,changes[i]))
+                                                               args=(input_1,receiver[0], chunkSize,1,changes[i],p1))
                             receiver2 = Process(target=receiveChunk,
-                                                                args=(input_2, receiver[1], chunkSize, 2, changes[i]))
+                                                                args=(input_2, receiver[1], chunkSize, 2, changes[i],p2))
                             receiver3 = Process(target=receiveChunk,
-                                                                args=(input_3, receiver[2], chunkSize, 3, changes[i]))
+                                                                args=(input_3, receiver[2], chunkSize, 3, changes[i],p3))
                             receiver4 = Process(target=receiveChunk,
-                                                                args=(input_4, receiver[3], filesize-3*chunkSize, 4, changes[i]))
+                                                                args=(input_4, receiver[3], filesize-3*chunkSize, 4, changes[i],p4))
                             processes = [receiver1,receiver2,receiver3,receiver4]
 
 
@@ -141,13 +183,13 @@ def start_client(serverIP,serverPort,folder):
                             for p in processes:
                                 p.start()
 
+                            printProcess(receiver1,receiver2,receiver3,receiver4,progress1,progress2,progress3,progress4,changes[i])
                             output=[output_1.recv(),output_2.recv(),output_3.recv(),output_4.recv()]
-
 
                             for p in processes:
                                 p.join()
 
-                            print(f"[DEBUG] Starting to write file {changes[i]}")
+                            print(f"\n[DEBUG] Starting to write file {changes[i]}")
                             with open(folder+changes[i], "wb") as f:
                                 for data in output:
                                     f.write(data)
