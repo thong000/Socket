@@ -1,24 +1,15 @@
 import socket
 import os
 import time
-import multiprocessing
 from math import floor
+from multiprocessing import  Process, Pipe
 
-
-def fileData(file_path):
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()  # Đọc toàn bộ nội dung tệp
-        return content
-    except FileNotFoundError:
-        print(f"Tệp {file_path} không tồn tại.")
-        return None
 
 
 def fileDataFrom(file_path, size):
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()  # Đọc toàn bộ nội dung tệp
+            content = file.read()
         if size == 0:
             return content[0:]
         else:
@@ -30,7 +21,6 @@ def fileDataFrom(file_path, size):
 
 
 def split_string(input_string, delimiter):
-    # Sử dụng phương thức split() để chia chuỗi theo ký tự phân cách
     result = input_string.split(delimiter)
     return result
 
@@ -41,39 +31,24 @@ def getFileSize(file_path):
         return file_size
     except FileNotFoundError:
         print(f"Tệp {file_path} không tồn tại.")
-        return None
+        return -1
 
 
-def socketSendNumber(num, soc):
+
+def sendNumber(num, soc):
     soc.sendall(str(num).encode())
 
-
-def socketSendString(string, soc):
+def sendString(string, soc):
     soc.sendall(string.encode('utf-8'))
 
+def recvNumber(soc, size):
+    return int(soc.recv(size).decode())
 
-def socketRecvNumber(soc, size):
-    data = soc.recv(size)
-    num = int(data.decode())
-    return num
-
-
-def socketRecvString(soc, size):
-    data = soc.recv(size)
-    return data.decode('utf-8')
+def recvString(soc, size):
+    return soc.recv(size).decode('utf-8')
 
 def recvByte(soc, size):
     return soc.recv(size)
-
-def writeStringToFile(file_path, content):
-    try:
-        # Mở tệp ở chế độ ghi ('w'). Nếu tệp đã tồn tại, nó sẽ bị ghi đè.
-        with open(file_path, 'a', encoding='utf-8') as file:
-            file.write(content)  # Ghi chuỗi vào tệp
-        print(f"Đã ghi nội dung vào tệp {file_path}")
-    except Exception as e:
-        print(f"Lỗi khi ghi tệp: {e}")
-
 
 def isChange(fileName, oldSize):
     curSize = getFileSize(fileName)
@@ -81,134 +56,119 @@ def isChange(fileName, oldSize):
         return False
     return curSize != oldSize
 
+def receiveChunk(pipe, connection, chunkSize, part, fileName):
 
-HOST = "127.0.0.1"  # IP adress server
-PORT = 65432  # port is used by the server
-
-receiver_1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-receiver_2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-receiver_3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-receiver_4 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_address = (HOST, PORT)
-print("Client connect to server with port: " + str(PORT))
-receiver_1.connect(server_address)
-receiver_2.connect(server_address)
-receiver_3.connect(server_address)
-receiver_4.connect(server_address)
-
-def receiveChunk(receiver,connection, chunkSize, part,fileName):
-    print(chunkSize)
-    if chunkSize < 1024:
-        receiver= recvByte(connection,chunkSize)
-    else:
-        temp = 0
-        while temp < chunkSize:
-            last = temp + 1024
-            if last < chunkSize:
-               receiver = receiver + recvByte(connection,1024)
-            else:
-                receiver=receiver+recvByte(connection,chunkSize%1024)
-            temp += 1024
-            print(f"[INFO] Downloading {fileName} part {part}: {round(temp/chunkSize*100.0)}%")
-
-
-
-
-
-def receiveChunk(connection, chunkSize, part,fileName):
-    receiver=b""
-    print(chunkSize)
-    if chunkSize < 1024:
-        return recvByte(connection,chunkSize)
-    else:
-        temp = 0
-        while temp < chunkSize:
-            last = temp + 1024
-            if last < chunkSize:
-               receiver = receiver + recvByte(connection,1024)
-            else:
-                receiver=receiver+recvByte(connection,chunkSize%1024)
-            temp += 1024
-            print(f"[INFO] Downloading {fileName} part {part}: {floor(temp/chunkSize*100.0)}%")
-    return receiver
-
-try:
-
-    size = socketRecvNumber(receiver_1, 1024)
-    fileList = socketRecvString(receiver_1, size)
-    print("Danh sach cac file co the download la:\n")
-    print(fileList)
-
-    start_time = time.time()
-    oldSize = getFileSize("Client/input.txt")
-    newSize = 0
-
-    while True:
-        if isChange("Client/input.txt", oldSize):
-
-            newSize = getFileSize("Client/input.txt")
-            changeSize = newSize - oldSize
-
-            split = split_string(fileDataFrom("Client/input.txt", oldSize), '\n')
-
-            for i in range(len(split)):
-
-                if split[i] != "":
-                    socketSendNumber(len(split[i]), receiver_1)  # Gui do dai ten file
-                    socketSendString(split[i], receiver_1)  # Gui ten file
-
-                    # Nhận kích thước file
-                    filesize = int(receiver_1.recv(1024).decode())
-                    chunkSize = filesize // 4
-
-                    Des = "Client/" + split[i]
-
-                    """
-                    receiver = [b"",b"",b"",b""]  # Noi dung tung chunk
-                    
-                    
-                    receiver1= multiprocessing.Process(target=receiveChunk,
-                                                       args=(receiver[0],receiver_1, chunkSize,1,split[i],))
-                    receiver2 = multiprocessing.Process(target=receiveChunk,
-                                                        args=(receiver[1], receiver_2, chunkSize, 2, split[i],))
-                    receiver3 = multiprocessing.Process(target=receiveChunk,
-                                                        args=(receiver[2], receiver_3, chunkSize, 3, split[i],))
-                    receiver4 = multiprocessing.Process(target=receiveChunk,
-                                                        args=(receiver[3], receiver_4, filesize-3*chunkSize, 4, split[i],))
-
-                    processes = [receiver1,receiver2,receiver3,receiver4]
-
-                    receiver1.start()
-                    receiver2.start()
-                    receiver3.start()
-                    receiver4.start()
-                    
-                    
-                    for p in processes:
-                        p.join()
-                    """
-
-                    receiver=[]
-                    receiver.append(receiveChunk(receiver_1, chunkSize,1,split[i]))
-                    receiver.append(receiveChunk(receiver_2, chunkSize,2,split[i]))
-                    receiver.append(receiveChunk(receiver_3, chunkSize,3,split[i]))
-                    receiver.append(receiveChunk(receiver_4, filesize-3*chunkSize,4,split[i]))
-
-
-                    with open("Client/" + split[i], "wb") as f:
-                        f.write(receiver[0])
-                        f.write(receiver[1])
-                        f.write(receiver[2])
-                        f.write(receiver[3])
-
-            oldSize = newSize
+        data=b""
+        if chunkSize < 1024:
+            data=data + recvByte(connection, chunkSize)
         else:
-            oldSize = getFileSize("Client/input.txt")
-        time.sleep(2)
+            temp = 0
+            while temp < chunkSize:
+                last = temp + 1024
+                if last < chunkSize:
+                    data=data+recvByte(connection, 1024)
+                else:
+                    data=data+recvByte(connection, chunkSize % 1024)
+
+                temp += 1024
+                print(f"[INFO] Downloading {fileName} part {part}: {floor(temp/chunkSize*100.0)}%")
+
+        pipe.send(data)
 
 
-except KeyboardInterrupt:
-    receiver_1.close()
-finally:
-    receiver_1.close()
 
+
+
+
+
+
+def start_client(serverIP,serverPort,folder):
+
+    receiver = [socket.socket(socket.AF_INET, socket.SOCK_STREAM) for _ in range(4)]
+
+    server_address = (serverIP, serverPort)
+    print("[INFO]Client connect to server with port: " + str(serverPort))
+
+    for clientSocket in receiver:
+        clientSocket.connect(server_address)
+
+    try:
+
+        size = recvNumber(receiver[0], 1024)
+        fileList = recvString(receiver[0], size)
+        print(f"[INFO]Danh sach cac file co the download la:\n{fileList}\n")
+
+        start_time = time.time()
+        oldSize = getFileSize(folder+"input.txt")
+
+
+        while True:
+            if isChange(folder+"input.txt", oldSize):
+
+                newSize = getFileSize(folder+"input.txt")
+                changes = split_string(fileDataFrom(folder+"input.txt", oldSize), '\n')
+
+                for i in range(len(changes)):
+
+                    if changes[i] != "":
+                        sendNumber(len(changes[i]), receiver[0])  # Gui do dai ten file
+                        sendString(changes[i], receiver[0])  # Gui ten file
+
+                        # Nhận kích thước file
+                        filesize = int(receiver[0].recv(1024).decode())
+                        if filesize!=-1:
+
+                            chunkSize = filesize // 4
+
+                            output_1, input_1 = Pipe()
+                            output_2, input_2 = Pipe()
+                            output_3, input_3 = Pipe()
+                            output_4, input_4 = Pipe()
+
+
+                            receiver1 = Process(target=receiveChunk,
+                                                               args=(input_1,receiver[0], chunkSize,1,changes[i]))
+                            receiver2 = Process(target=receiveChunk,
+                                                                args=(input_2, receiver[1], chunkSize, 2, changes[i]))
+                            receiver3 = Process(target=receiveChunk,
+                                                                args=(input_3, receiver[2], chunkSize, 3, changes[i]))
+                            receiver4 = Process(target=receiveChunk,
+                                                                args=(input_4, receiver[3], filesize-3*chunkSize, 4, changes[i]))
+                            processes = [receiver1,receiver2,receiver3,receiver4]
+
+
+
+                            for p in processes:
+                                p.start()
+
+                            output=[output_1.recv(),output_2.recv(),output_3.recv(),output_4.recv()]
+
+
+                            for p in processes:
+                                p.join()
+
+                            print(f"[DEBUG] Starting to write file {changes[i]}")
+                            with open(folder+changes[i], "wb") as f:
+                                for data in output:
+                                    f.write(data)
+                                print(f"[INFO] Da ghi file {changes[i]}")
+                        else:
+                            print(f"[INFO] File {changes[i]} khong ton tai tren server")
+                oldSize = newSize
+            else:
+                oldSize = getFileSize(folder+"input.txt")
+            time.sleep(5)
+
+
+    except KeyboardInterrupt:
+        sendNumber(-2,receiver[0])
+        time.sleep(3)
+        print("[INFO] Da ket thuc chuong trinh")
+        for clientSocket in receiver:
+            clientSocket.close()
+    finally:
+        for clientSocket in receiver:
+            clientSocket.close()
+
+if __name__ == "__main__":
+    start_client("127.0.0.1",65432,"Client/")
