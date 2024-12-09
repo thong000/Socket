@@ -37,6 +37,11 @@ def socketRecvDataWithSeq(server, size, type):
         seq_number, data = packet.split(b"|", 1)
         seq = int(seq_number.decode())
 
+        if data == b'FIN':
+            ack += len(data)
+            server.sendto(str(ack).encode(), client)
+            return data, client
+
         if(seq == ack + len(data)):
             ack += len(data)
             server.sendto(str(ack).encode(), client)
@@ -105,7 +110,7 @@ seq = 0
 ack = 0
 
 def start_server(host, port, file):
-    global seq
+    global seq, ack
 
     # Tao socket chinh va lang nghe client
     server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -114,6 +119,8 @@ def start_server(host, port, file):
 
 
     while True:
+        seq = 0
+        ack = 0
         data, addr = socketRecvDataWithSeq(server, 1024, 0)
         #data, addr = server.recvfrom(1024)
         print(f"[INFO] Received request from {addr}")
@@ -125,6 +132,8 @@ def start_server(host, port, file):
 
         while True:
             length, _ = socketRecvDataWithSeq(server, 1024, 1)  # Nhan do dai cua ten file
+            if length == b'FIN': # Nếu client kết thúc thì out vòng lặp
+                break
             fileName, _ = socketRecvDataWithSeq(server, length, 0)
             print(f"[INFO] Received filename from {addr}")
 

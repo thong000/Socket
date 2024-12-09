@@ -214,9 +214,10 @@ try:
                 oldSize = newSize
             else:
                 oldSize = getFileSize("Client/input.txt")
-            time.sleep(2)
+            time.sleep(5)
 
 except KeyboardInterrupt:
+    socketSendDataWithSeq(client, server_address, "FIN")
     client.close()
 finally:
     client.close()
