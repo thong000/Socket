@@ -33,10 +33,10 @@ def fileData(file_path):
         return None
 
 def isChange(fileName,oldSize):
-    curSize=getFileSize(fileName)
-    if curSize==None:
+    curSize = getFileSize(fileName)
+    if curSize == None:
         return False
-    return curSize!=oldSize
+    return curSize != oldSize
 
 def socketRecvDataWithSeq(client, server_address, size, type):
     global ack
@@ -45,7 +45,7 @@ def socketRecvDataWithSeq(client, server_address, size, type):
     retries = 0
 
     while(retries < max_retries):
-        packet, _ = client.recvfrom(size + 100)
+        packet, _ = client.recvfrom(size + 1024)
         if not packet:
             return None
 
@@ -56,9 +56,9 @@ def socketRecvDataWithSeq(client, server_address, size, type):
         seq_number, data = packet.split(b"|", 1)
         seq = int(seq_number.decode())
 
-        if(seq == ack):
+        if(seq == ack + len(data)):
+            ack += len(data)
             client.sendto(str(ack).encode(), server_address)
-            ack += 1
             if not data:
                 return None
             if type == 2:
@@ -69,15 +69,20 @@ def socketRecvDataWithSeq(client, server_address, size, type):
                 return data.decode()
         else:
             print(f"[INFO] ERROR seq number")
-            client.sendto(str(ack - 1).encode(), server_address)
+            client.sendto(str(ack).encode(), server_address)
             retries += 1
         
 def socketSendDataWithSeq(client, server, data):
     global seq
     
+    #Nếu không nhận được file ACK sau n lần gửi ta mặc định client đã nhận được. Vì nếu không nhận được hay nhận được rồi thì ta cũng sẽ không tiếp tục gửi.
+    
     if isinstance(data, bytes):  # Nếu dữ liệu là byte
+        seq += len(data)
         packet = f"{seq}|".encode() + data
     else:  # Nếu dữ liệu là chuỗi hoặc số
+        data = str(data)
+        seq += len(data.encode())
         packet = f"{seq}|{data}".encode()
 
     max_retries = 5
@@ -100,12 +105,11 @@ def socketSendDataWithSeq(client, server, data):
 
                 if ack_number == seq:
                     print(f"[INFO] ACK received for seq {seq}")
-                    seq += 1
                     break 
                 else:
                     print(f"[ERROR] Wrong ACK")
             
-            if ack_number == seq - 1:
+            if ack_number == seq:
                 break
         except socket.timeout:
             retries += 1
@@ -114,7 +118,6 @@ def socketSendDataWithSeq(client, server, data):
 
     if retries == max_retries:
         print(f"[ERROR] Failed to send seq {seq}")
-        seq += 1 #Nếu không nhận được file ACK sau n lần gửi ta mặc định client đã nhận được. Vì nếu không nhận được hay nhận được rồi thì ta cũng sẽ không tiếp tục gửi.
         return
 
 def socketSendNumber(num, server, client):
@@ -139,7 +142,7 @@ PORT = 65432        # port is used by the server
 
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_address = (HOST, PORT)
-seq = 10
+seq = 0
 ack = 0
 
 socketSendDataWithSeq(client, server_address, "GET_FILE")
