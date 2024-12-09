@@ -37,24 +37,27 @@ def recvString(soc, size):
         return data.decode()
 
 
-def sendChunk(connection, chunk):
+def sendChunk(connection, chunk,fileName,address):
+    print(f"[INFO] Dang gui file {fileName} den {address}")
     length=len(chunk)
-    if length<1024:
+    l=length//1000
+    if length<l:
         sendByte(chunk,connection)
     else:
         temp=0
         while temp<length:
             first=temp
-            last=temp+1024
+            last=temp+l
             if last<length:
                 sendByte(chunk[first:last],connection)
             else:
                 sendByte(chunk[first:], connection)
-            temp+=1024
+            temp+=l
+    print(f"[INFO] Da gui file {fileName} den {address}")
 
 
 
-def handle_client(connection,folder):
+def handle_client(connection,folder,address):
     while True:
             length=recvNumber(connection[0],1024) # Nhan do dai cua ten file can tai
 
@@ -85,10 +88,10 @@ def handle_client(connection,folder):
                 chunk.append(f.read(fileSize-3*chunkSize))
 
             # Tao cac ham gui song song
-            sender_1 = multiprocessing.Process(target=sendChunk, args=(connection[0], chunk[0],))
-            sender_2 = multiprocessing.Process(target=sendChunk, args=(connection[1], chunk[1],))
-            sender_3 = multiprocessing.Process(target=sendChunk, args=(connection[2], chunk[2],))
-            sender_4 = multiprocessing.Process(target=sendChunk, args=(connection[3], chunk[3],))
+            sender_1 = multiprocessing.Process(target=sendChunk, args=(connection[0], chunk[0],fileName,address,))
+            sender_2 = multiprocessing.Process(target=sendChunk, args=(connection[1], chunk[1],fileName,address,))
+            sender_3 = multiprocessing.Process(target=sendChunk, args=(connection[2], chunk[2],fileName,address,))
+            sender_4 = multiprocessing.Process(target=sendChunk, args=(connection[3], chunk[3],fileName,address,))
 
             # Bat dau gui file
             sender_1.start()
@@ -127,7 +130,7 @@ def start_server(host, port,file,folder,maxClient):
         sendString(getFileData(file), client_socket[0])
 
 
-        process = multiprocessing.Process(target=handle_client, args=(client_socket,folder,))
+        process = multiprocessing.Process(target=handle_client, args=(client_socket,folder,addr,))
         process.start()
         print(f"[INFO] Active processes: {len(multiprocessing.active_children())}")
 
