@@ -204,7 +204,10 @@ try:
                                 if not receiver:
                                     break
                                 length += len(receiver)
+                                print(f"\r[INFO] Downloading {split[i]}: {round((length / filesize) * 100)}%", end = "")
                                 f.write(receiver)
+                        
+                        print("\n")
 
 
 
