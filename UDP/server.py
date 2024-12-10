@@ -19,6 +19,26 @@ def getFileSize(file_path):
         print(f"Tệp {file_path} không tồn tại.")
         return None
 
+def ones_complement_checksum(data):
+    # Chia dữ liệu thành các khối 16 bit
+    if len(data) % 2 != 0:  # Nếu số byte lẻ, thêm 1 byte 0
+        data += b'\x00'
+    
+    checksum = 0
+    
+    # Duyệt qua từng cặp byte
+    for i in range(0, len(data), 2):
+        # Kết hợp 2 byte thành một số 16 bit (big-endian)
+        word = (data[i] << 8) + data[i + 1]
+        checksum += word
+        
+        # Nếu vượt quá 16 bit, thêm carry vào
+        checksum = (checksum & 0xFFFF) + (checksum >> 16)
+    
+    # Lấy bù 1
+    checksum = ~checksum & 0xFFFF
+    return checksum
+
 def socketRecvDataWithSeq(server, size, type):
     global ack
     
@@ -34,16 +54,16 @@ def socketRecvDataWithSeq(server, size, type):
         if len(_ack) != 2:
             continue
 
-        seq_number, data = packet.split(b"|", 1)
+        seq_number, checksum, data = packet.split(b"|", 2)
         seq = int(seq_number.decode())
 
         if data == b'FIN':
-            ack += len(data)
+            ack += 1
             server.sendto(str(ack).encode(), client)
             return data, client
 
-        if(seq == ack + len(data)):
-            ack += len(data)
+        if(seq == ack + 1 and int(checksum.decode()) == ones_complement_checksum(data)):
+            ack += 1
             server.sendto(str(ack).encode(), client)
             if not data:
                 return None
@@ -60,13 +80,14 @@ def socketRecvDataWithSeq(server, size, type):
 def socketSendDataWithSeq(server, client, data):
     global seq
 
+    seq += 1
     if isinstance(data, bytes):  # Nếu dữ liệu là byte
-        seq += len(data)
-        packet = f"{seq}|".encode() + data
+        checksum = ones_complement_checksum(data)
+        packet = f"{seq}|{checksum}|".encode() + data
     else:  # Nếu dữ liệu là chuỗi hoặc số
         data = str(data)
-        seq += len(data.encode())
-        packet = f"{seq}|{data}".encode()
+        checksum = ones_complement_checksum(data.encode())
+        packet = f"{seq}|{checksum}|{data}".encode()
 
     max_retries = 5
     timeout = 2
@@ -133,6 +154,7 @@ def start_server(host, port, file):
         while True:
             length, _ = socketRecvDataWithSeq(server, 1024, 1)  # Nhan do dai cua ten file
             if length == b'FIN': # Nếu client kết thúc thì out vòng lặp
+                print("[INFO] Server end with client {host}:{port}")
                 break
             fileName, _ = socketRecvDataWithSeq(server, length, 0)
             print(f"[INFO] Received filename from {addr}")

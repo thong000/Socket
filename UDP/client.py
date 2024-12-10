@@ -38,6 +38,26 @@ def isChange(fileName,oldSize):
         return False
     return curSize != oldSize
 
+def ones_complement_checksum(data):
+    # Chia dữ liệu thành các khối 16 bit
+    if len(data) % 2 != 0:  # Nếu số byte lẻ, thêm 1 byte 0
+        data += b'\x00'
+    
+    checksum = 0
+    
+    # Duyệt qua từng cặp byte
+    for i in range(0, len(data), 2):
+        # Kết hợp 2 byte thành một số 16 bit (big-endian)
+        word = (data[i] << 8) + data[i + 1]
+        checksum += word
+        
+        # Nếu vượt quá 16 bit, thêm carry vào
+        checksum = (checksum & 0xFFFF) + (checksum >> 16)
+    
+    # Lấy bù 1
+    checksum = ~checksum & 0xFFFF
+    return checksum
+
 def socketRecvDataWithSeq(client, server_address, size, type):
     global ack
 
@@ -52,12 +72,12 @@ def socketRecvDataWithSeq(client, server_address, size, type):
         _ack = packet.split(b"|", 1)
         if len(_ack) != 2: #Nếu file nhận là ack thì bỏ qua. Trong trường hợp lệnh sent phía trước bị dư
             continue
-
-        seq_number, data = packet.split(b"|", 1)
+        
+        seq_number, checksum, data = packet.split(b"|", 2)
         seq = int(seq_number.decode())
 
-        if(seq == ack + len(data)):
-            ack += len(data)
+        if(seq == ack + 1 and int(checksum.decode()) == ones_complement_checksum(data)):
+            ack += 1
             client.sendto(str(ack).encode(), server_address)
             if not data:
                 return None
@@ -76,14 +96,14 @@ def socketSendDataWithSeq(client, server, data):
     global seq
     
     #Nếu không nhận được file ACK sau n lần gửi ta mặc định client đã nhận được. Vì nếu không nhận được hay nhận được rồi thì ta cũng sẽ không tiếp tục gửi.
-    
+    seq += 1
     if isinstance(data, bytes):  # Nếu dữ liệu là byte
-        seq += len(data)
-        packet = f"{seq}|".encode() + data
+        checksum = ones_complement_checksum(data)
+        packet = f"{seq}|{checksum}|".encode() + data
     else:  # Nếu dữ liệu là chuỗi hoặc số
         data = str(data)
-        seq += len(data.encode())
-        packet = f"{seq}|{data}".encode()
+        checksum = ones_complement_checksum(data.encode())
+        packet = f"{seq}|{checksum}|{data}".encode()
 
     max_retries = 5
     timeout = 2
