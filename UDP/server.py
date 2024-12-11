@@ -108,16 +108,17 @@ def socketSendDataWithSeq(server, client, data):
                 ack_number = int(ack_.decode())
 
                 if ack_number == seq:
-                    print(f"[INFO] ACK received for seq {seq}")
+                    #print(f"[INFO] ACK received for seq {seq}")
                     break 
                 else:
-                    print(f"[ERROR] Wrong ACK")
+                    pass
+                    #print(f"[ERROR] Wrong ACK")
                     
             if ack_number == seq:
                 break
         except socket.timeout:
             retries += 1
-            print(f"[WARN] Timeout waiting for ACK. Retry {retries}/{max_retries}")
+            #print(f"[WARN] Timeout waiting for ACK. Retry {retries}/{max_retries}")
         
     server.settimeout(None)
 
@@ -125,6 +126,41 @@ def socketSendDataWithSeq(server, client, data):
         print(f"[ERROR] Failed to send seq {seq}")
         #Nếu không nhận được file ACK sau n lần gửi ta mặc định client đã nhận được. Vì nếu không nhận được hay nhận được rồi thì ta cũng sẽ không tiếp tục gửi.
         return
+
+def sentFile(server, chunk):
+    done = 0
+    l = 1024
+
+    while True:
+        packetReceived, client = server.recvfrom(1024)
+
+        seq, part_ = packetReceived.split(b"|", 1)
+
+        part = int(part_.decode())
+
+        seq_number = int(seq.decode())
+        #print(seq_number)
+
+        chunkSize = len(chunk[part - 1])
+
+        data = b""
+
+        if(seq_number == 0):
+            packet = f"{seq_number}|{0}|".encode() + data
+            done += 1
+        else:
+            if seq_number * l < chunkSize:
+                data = chunk[part - 1][(seq_number - 1) * l : seq_number * l]
+            else:
+                data = chunk[part - 1][(seq_number - 1) * l :]
+            
+           
+            packet = f"{seq_number}|{ones_complement_checksum(data)}|".encode() + data
+        
+        server.sendto(packet, client)
+        
+        if done == 4: 
+            break
 
 
 seq = 0
@@ -162,10 +198,16 @@ def start_server(host, port, file):
             fileSize = os.path.getsize("Server/" + fileName)
             socketSendDataWithSeq(server, addr, fileSize)
 
-            with open("Server/" + fileName, "rb") as f:
-                while data := f.read(1024):
-                    socketSendDataWithSeq(server, addr, data)
+            chunkSize = fileSize//4
+            chunk = []
 
+            # Doc file cho tung chunk
+            with open("Server/" + fileName, "rb") as f:
+                for i in range(3):
+                    chunk.append(f.read(chunkSize))
+                chunk.append(f.read(fileSize-3*chunkSize))
+
+            sentFile(server, chunk)
 
 
 
