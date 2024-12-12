@@ -65,17 +65,18 @@ def receiveChunk(pipe, connection, chunkSize, part, fileName,processPipe):
         if chunkSize < l:
             data=data + recvByte(connection, chunkSize)
         else:
-            temp = 0
-            while temp < chunkSize:
+            temp=0
+            while temp< chunkSize:
                 last = temp + l
                 if last < chunkSize:
                     data=data+recvByte(connection, l)
                 else:
                     data=data+recvByte(connection, chunkSize % l)
 
-                temp += l
+                temp = len(data)
                 progress=floor(temp/chunkSize*100.0)
                 processPipe.send(progress)
+
 
         pipe.send(data)
 
@@ -152,7 +153,10 @@ def start_client(serverIP,serverPort,folder):
                         sendString(changes[i], receiver[0])  # Gui ten file
 
                         # Nhận kích thước file
-                        filesize = int(receiver[0].recv(1024).decode())
+
+                        a=receiver[0].recv(1024).decode()
+                        print(a)
+                        filesize = int(a)
                         if filesize!=-1:
 
                             chunkSize = filesize // 4
@@ -185,7 +189,6 @@ def start_client(serverIP,serverPort,folder):
 
                             printProcess(receiver1,receiver2,receiver3,receiver4,progress1,progress2,progress3,progress4,changes[i])
                             output=[output_1.recv(),output_2.recv(),output_3.recv(),output_4.recv()]
-
                             for p in processes:
                                 p.join()
 
@@ -213,4 +216,4 @@ def start_client(serverIP,serverPort,folder):
             clientSocket.close()
 
 if __name__ == "__main__":
-    start_client("127.0.0.1",65432,"Client/")
+    start_client("27.27.25.210",65432,"Client/")
