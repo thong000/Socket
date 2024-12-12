@@ -190,7 +190,7 @@ def start_server(host, port, file):
         while True:
             length, _ = socketRecvDataWithSeq(server, 1024, 1)  # Nhan do dai cua ten file
             if length == b'FIN': # Nếu client kết thúc thì out vòng lặp
-                print("[INFO] Server end with client {host}:{port}")
+                print(f"[INFO] Server end with client {addr}")
                 break
             fileName, _ = socketRecvDataWithSeq(server, length, 0)
             print(f"[INFO] Received filename from {addr}")

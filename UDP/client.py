@@ -153,6 +153,7 @@ def get_num(key, fileList):
     return -1
 
 def printProcess(a,b,c,d,pipe1,pipe2,pipe3,pipe4,fileName):
+
     msg1=0
     msg2=0
     msg3=0
@@ -169,7 +170,7 @@ def printProcess(a,b,c,d,pipe1,pipe2,pipe3,pipe4,fileName):
             msg4 = pipe4.recv()
 
         # Sử dụng \r để in lại 4 dòng cố định
-        print(f"\r[INFO] Downloading {fileName} | Part 1: {msg1}% | Part 2: {msg2}% | Part 3: {msg3}% | Part 4: {msg4}%", end="")
+        print(f"\r[INFO] Downloading {fileName} | Part 1: {msg1}% | Part 2: {msg2}% | Part 3: {msg3}% | Part 4: {msg4}%",end="")
 
 
         if msg1>=100 and msg2>=100 and msg3>=100 and msg4>=100:
@@ -215,14 +216,15 @@ def sentRequest(client, server, seq, part, length):
 
 
 def receiveChunk(pipe, chunkSize, part, processPipe, server):
-    #print(1)
+    
     seq = 0
     client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    client.bind(('localhost', 54320 + part)) ## 54321, 54322, 54323, 54324, 54325
+    client.bind(('localhost', 52340 + part)) ## 54321, 54322, 54323, 54324, 54325
     
     length = 0
     data = b""
     
+    #print(part)
 
     while length < chunkSize:
         _data, length = sentRequest(client, server, seq, part, length)
@@ -231,6 +233,7 @@ def receiveChunk(pipe, chunkSize, part, processPipe, server):
         #print(f"{length} and {chunkSize}")
 
         progress = floor(length / chunkSize * 100.0)
+        #print(progress)
         processPipe.send(progress)
     
     #print(1)
@@ -260,9 +263,14 @@ def start_client():
             print("Danh sach cac file co the download la:")
             fileList = split_string(data, '\n')
             fileSent = []
+            fileName = []
+            fileSize = []
             for i in range(len(fileList)):
+                fileName.append('')
+                fileSize.append('')
                 fileSent.append(0)
-                print(fileList[i], fileSent[i], sep = ' ')
+                fileName[i], fileSize[i] = fileList[i].split(' ')
+                print(fileName[i], fileSize[i], sep = ' ')
 
             start_time = time.time()
             oldSize = getFileSize("Client/input.txt")
@@ -280,7 +288,7 @@ def start_client():
                     for i in range(len(split)):
                         if split[i] != "":
 
-                            k = get_num(split[i], fileList)
+                            k = get_num(split[i], fileName)
 
                             if k == -1:
                                 print("Khong ton tai file, vui long kiem tra ten file!")
@@ -361,7 +369,7 @@ def start_client():
                 time.sleep(5)
 
     except KeyboardInterrupt:
-        socketSendDataWithSeq(client, server_address, "FIN")
+        seq = socketSendDataWithSeq(client, server_address, "FIN", seq)
         client.close()
     finally:
         client.close()
