@@ -3,95 +3,94 @@ import os
 import multiprocessing
 
 
-def getFileData(file_path):
+def getFileData(filePath):
     try:
-        with open(file_path, 'r', encoding='utf-8') as file:
+        with open(filePath, 'r', encoding='utf-8') as file:
             content = file.read()
         return content
     except FileNotFoundError:
-        print(f"[INFO] Tệp {file_path} khong ton tai.")
+        print(f"[INFO] Tệp {filePath} khong ton tai.")
         return None
 
-def getFileSize(file_path):
+def getFileSize(filePath):
     try:
-        file_size = os.path.getsize(file_path)  # Lấy kích thước tệp tính theo byte
-        return file_size
+        fileSize = os.path.getsize(filePath)
+        return fileSize
     except FileNotFoundError:
-        print(f"[INFO] Tệp {file_path} khong ton tai.")
+        print(f"[INFO] Tệp {filePath} khong ton tai.")
         return -1
 
-# Cac ham gui
+# Cac ham gui va nhan
+# Note: do ham sendall chi gui duoc du lieu byte nen neu muon gui
+# du lieu loai khac thi phai encode, khi nhan thi dung decode
+
 def sendNumber(num, soc):
     soc.sendall(str(num).encode())
 def sendString(string, soc):
     soc.sendall(string.encode('utf-8'))
 def sendByte(byte, soc):
     soc.sendall(byte)
-
-# Cac ham nhan
 def recvNumber(soc, size):
-        number = int(soc.recv(size).decode())
-        return number
+        return int(soc.recv(size).decode())
 def recvString(soc, size):
-        data = soc.recv(size)
-        return data.decode()
+        return soc.recv(size).decode()
 
 
 def sendChunk(connection, chunk,fileName,address):
-    print(f"[INFO] Dang gui file {fileName} den {address}")
+    print(f"[INFO] Dang gui mot chunk cua file  {fileName} den {address}")
+
     length=len(chunk)
-    l=length//1000
-    if length<l:
-        sendByte(chunk,connection)
-    else:
-        temp=0
-        while temp<length:
-            first=temp
-            last=temp+l
-            if last<length:
-                sendByte(chunk[first:last],connection)
-            else:
-                sendByte(chunk[first:], connection)
-            temp+=l
-    print(f"[INFO] Da gui file {fileName} den {address}")
+    bytePerSend=length//1000
+
+    temp=0
+    while temp<length:
+        first=temp
+        last=temp+bytePerSend
+        if last<length:
+            sendByte(chunk[first:last],connection)
+        else:
+            sendByte(chunk[first:], connection)
+        temp+=bytePerSend
+    print(f"[INFO] Da gui file mot chunk cua file {fileName} den {address}")
 
 
 
-def handle_client(connection,folder,address):
+def handleClient(socketList, folder, clientAddress):
     while True:
-            length=recvNumber(connection[0],1024) # Nhan do dai cua ten file can tai
+            fileNameLength=recvNumber(socketList[0], 1024) # Nhan do dai cua ten file can tai
 
             # Khi client nhan tin hieu Ctrl C thi mot socket se gui só -2 qua server
-            if length==-2:
-                print("[INFO] Da ngat ket noi")
+            if fileNameLength==-2:
+                print(f"[INFO] Da ngat ket noi voi {clientAddress}")
                 break
 
-            fileName=recvString(connection[0], length)  # Nhan ten cua file can tai
+            fileName=recvString(socketList[0], fileNameLength)  # Nhan ten cua file can tai
 
 
 
             # Gửi kích thước file
             fileSize = getFileSize(folder+fileName)
-            connection[0].sendall(str(fileSize).encode())
+            sendNumber(fileSize, socketList[0])
+
 
             if fileSize==-1:  # Truong hop file khong ton tai
-                break
+                continue
 
 
             chunkSize=fileSize//4
             chunk=[]
 
-            # Doc file cho tung chunk
+            # Doc file luu vao tung chunk
             with open(folder + fileName, "rb") as f:
                 for i in range(3):
                     chunk.append(f.read(chunkSize))
                 chunk.append(f.read(fileSize-3*chunkSize))
 
             # Tao cac ham gui song song
-            sender_1 = multiprocessing.Process(target=sendChunk, args=(connection[0], chunk[0],fileName,address,))
-            sender_2 = multiprocessing.Process(target=sendChunk, args=(connection[1], chunk[1],fileName,address,))
-            sender_3 = multiprocessing.Process(target=sendChunk, args=(connection[2], chunk[2],fileName,address,))
-            sender_4 = multiprocessing.Process(target=sendChunk, args=(connection[3], chunk[3],fileName,address,))
+            sender_1 = multiprocessing.Process(target=sendChunk, args=(socketList[0], chunk[0], fileName, clientAddress,))
+            sender_2 = multiprocessing.Process(target=sendChunk, args=(socketList[1], chunk[1], fileName, clientAddress,))
+            sender_3 = multiprocessing.Process(target=sendChunk, args=(socketList[2], chunk[2], fileName, clientAddress,))
+            sender_4 = multiprocessing.Process(target=sendChunk, args=(socketList[3], chunk[3], fileName, clientAddress,))
 
             # Bat dau gui file
             sender_1.start()
@@ -102,16 +101,14 @@ def handle_client(connection,folder,address):
 
 
 
-
-
-
-def start_server(host, port,file,folder,maxClient):
+def startServer(serverIP, port, fileList, folder, maxClient):
 
     # Tao socket chinh va lang nghe cac client
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind((host, port))
+    server.bind((serverIP, port))
     server.listen(maxClient)
-    print(f"[INFO] Server listening on {host}:{port}\n")
+
+    print(f"[INFO] Server listening on {serverIP}:{port}\n")
 
 
     while True:
@@ -126,11 +123,11 @@ def start_server(host, port,file,folder,maxClient):
 
 
         # Gui thong tin cua danh sach cac file
-        sendNumber(getFileSize(file), client_socket[0])
-        sendString(getFileData(file), client_socket[0])
+        sendNumber(getFileSize(fileList), client_socket[0])
+        sendString(getFileData(fileList), client_socket[0])
 
-
-        process = multiprocessing.Process(target=handle_client, args=(client_socket,folder,addr,))
+        # Xu li song song cac client
+        process = multiprocessing.Process(target=handleClient, args=(client_socket, folder, addr,))
         process.start()
         print(f"[INFO] Active processes: {len(multiprocessing.active_children())}")
 
@@ -138,4 +135,4 @@ def start_server(host, port,file,folder,maxClient):
 
 
 if __name__ == "__main__":
-    start_server("127.0.0.1", 65432, "Server/fileList.txt","Server/",10)
+    startServer("127.0.0.1", 65432, "Server/fileList.txt", "Server/", 10)
