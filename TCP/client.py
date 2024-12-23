@@ -134,12 +134,7 @@ def start_client(serverIP,serverPort,folder):
 
                 for i in range(len(fileNames)):
 
-                    if fileNames[i] in downloaded:
-                        isDownloaded=False
-                        print(f"[INFO] File {fileNames[i]} da duoc download")
-
-
-                    if  isDownloaded :
+                    if  not(fileNames[i] in downloaded):
                         downloaded.append(fileNames[i])
                         sendNumber(len(fileNames[i]), receiver[0])
                         sendString(fileNames[i], receiver[0])
@@ -202,4 +197,4 @@ def start_client(serverIP,serverPort,folder):
             clientSocket.close()
 
 if __name__ == "__main__":
-    start_client("127.0.0.1",65432,"Client/")
+    start_client("192.168.122.76",65432,"Client/")
