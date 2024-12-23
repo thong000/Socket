@@ -135,6 +135,7 @@ def socketSendDataWithSeq(server, client, data):
 
 def sentFile(server, chunk):
     done = 0
+    partDone = [1, 1, 1, 1]
     l = 1024
 
     while True:
@@ -158,7 +159,8 @@ def sentFile(server, chunk):
 
         if(seq_number == 0):
             packet = f"{seq_number}|{0}|".encode() + data
-            done += 1
+            done += partDone[part - 1] #Khi 1 phần được gửi xong, ta sẽ đánh dấu phần đó đã gửi xong
+            partDone[part - 1] = 0 #Tránh trường hợp yêu cầu gửi xong của 1 phần bị gửi 2 lần
         else:
             if seq_number * l < chunkSize:
                 data = chunk[part - 1][(seq_number - 1) * l : seq_number * l]
@@ -170,7 +172,7 @@ def sentFile(server, chunk):
         
         server.sendto(packet, client)
         
-        if done == 4: 
+        if done == 4: #Nếu cả 4 phần đều được gửi xong, ta thoát
             break
 
 
