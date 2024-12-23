@@ -208,12 +208,10 @@ def sentRequest(client, server, seq, part, length):
             ack = int(ack_number.decode())
 
             if (ack == 0):
-
                 return
 
             if (seq == ack and int(checksum.decode()) == ones_complement_checksum(data)):
                 if not data:
-
                     return None
 
 
@@ -233,7 +231,6 @@ def sentRequest(client, server, seq, part, length):
 def receiveChunk(pipe, chunkSize, part, processPipe, server):
     seq = 0
     client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    #client.bind(('localhost', 52370 + part))  ## 54321, 54322, 54323, 54324, 54325
     length = 0
     data = b""
 
@@ -255,7 +252,7 @@ def receiveChunk(pipe, chunkSize, part, processPipe, server):
     client.close()
 
 
-HOST = "172.20.10.3"  # IP adress server
+HOST = "127.0.0.1"  # IP adress server
 PORT = 65432  # port is used by the server
 
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -305,7 +302,7 @@ def start_client():
 
                         if k == -1:
                             print("Khong ton tai file, vui long kiem tra ten file!")
-                            break
+                            continue
 
                         if fileSent[k] == 1:
                             continue
@@ -360,16 +357,6 @@ def start_client():
                                 f.write(data)
                             print(f"\n[INFO] Da ghi file {split[i]}")
 
-                        """
-                        with open("Client/" + split[i],"wb") as f:
-                            while(length < filesize):
-                                receiver = socketRecvDataWithSeq(client, server_address, 1024, 2, ack)
-                                if not receiver:
-                                    break
-                                length += len(receiver)
-                                print(f"\r[INFO] Downloading {split[i]}: {round((length / filesize) * 100)}%", end = "")
-                                f.write(receiver)
-                        """
                         ##print("\n")
 
                 oldSize = newSize

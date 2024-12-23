@@ -42,7 +42,7 @@ def ones_complement_checksum(data):
 def socketRecvDataWithSeq(server, size, type):
     global ack
     
-    max_retries = 5
+    max_retries = 10
     retries = 0
 
     while(retries < max_retries):
@@ -50,8 +50,14 @@ def socketRecvDataWithSeq(server, size, type):
         if not packet:
             return None
 
+        #Trong trường hợp các ack ở phần gửi thông tin còn đọng trên buffer
         _ack = packet.split(b"|", 1)
         if len(_ack) != 2:
+            continue
+
+        #Trong trường hợp các request ở phần gửi file còn đọng trên buffer
+        request = packet.split(b"|", 2)
+        if len(request) != 3:
             continue
 
         seq_number, checksum, data = packet.split(b"|", 2)
@@ -133,6 +139,11 @@ def sentFile(server, chunk):
 
     while True:
         packetReceived, client = server.recvfrom(1024)
+
+        #Trong trường hợp các ack ở phần gửi thông tin còn đọng trên buffer
+        _ack = packetReceived.split(b"|", 1)
+        if len(_ack) != 2:
+            continue
 
         seq, part_ = packetReceived.split(b"|", 1)
 
