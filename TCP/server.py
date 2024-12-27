@@ -114,20 +114,20 @@ def startServer(serverIP, port, fileList, folder, maxClient):
     while True:
 
         # Tao 4 socket va chap nhan 4 connection
-        client_socket=[]
+        server_socket=[]
         addr=""
         for i in range(4):
             coon, addr = server.accept()
-            client_socket.append(coon)
+            server_socket.append(coon)
         print(f"[INFO] Connected to {addr}")
 
 
         # Gui thong tin cua danh sach cac file
-        sendNumber(getFileSize(fileList), client_socket[0])
-        sendString(getFileData(fileList), client_socket[0])
+        sendNumber(getFileSize(fileList), server_socket[0])
+        sendString(getFileData(fileList), server_socket[0])
 
         # Xu li song song cac client
-        process = multiprocessing.Process(target=handleClient, args=(client_socket, folder, addr,))
+        process = multiprocessing.Process(target=handleClient, args=(server_socket, folder, addr,))
         process.start()
         print(f"[INFO] Active processes: {len(multiprocessing.active_children())}")
 
