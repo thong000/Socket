@@ -108,17 +108,13 @@ def socketSendDataWithSeq(server, client, data):
                 ack_, _ = server.recvfrom(1024)  # Chờ ACK từ client
 
                 _ack = ack_.split(b"|", 1)
-                if len(_ack) == 2: #Nếu file nhận KHÔNG là ack thì bỏ qua. Trong trường hợp file ACK phía trước bị chậm
+                if len(_ack) == 2: #Nếu packet nhận KHÔNG là ack thì bỏ qua. Trong trường hợp packet data phía trước bị tồn đọng trên buffer
                     continue
 
                 ack_number = int(ack_.decode())
 
                 if ack_number == seq:
-                    #print(f"[INFO] ACK received for seq {seq}")
                     break 
-                else:
-                    pass
-                    #print(f"[ERROR] Wrong ACK")
                     
             if ack_number == seq:
                 break
@@ -136,7 +132,7 @@ def socketSendDataWithSeq(server, client, data):
 def sentFile(server, chunk):
     done = 0
     partDone = [1, 1, 1, 1]
-    l = 1024
+    l = min(5*1024, len(chunk[3]))
 
     while True:
         packetReceived, client = server.recvfrom(1024)
@@ -166,7 +162,6 @@ def sentFile(server, chunk):
                 data = chunk[part - 1][(seq_number - 1) * l : seq_number * l]
             else:
                 data = chunk[part - 1][(seq_number - 1) * l :]
-            
            
             packet = f"{seq_number}|{ones_complement_checksum(data)}|".encode() + data
         
@@ -192,7 +187,6 @@ def start_server(host, port, file):
         seq = 0
         ack = 0
         data, addr = socketRecvDataWithSeq(server, 1024, 0)
-        #data, addr = server.recvfrom(1024)
         print(f"[INFO] Received request from {addr}")
 
         if data.strip() == "GET_FILE":
@@ -225,4 +219,4 @@ def start_server(host, port, file):
 
 
 if __name__ == "__main__":
-    start_server("127.0.0.1", 65432,"Server/fileList.txt")
+    start_server("172.20.10.3", 65432,"Server/fileList.txt")
