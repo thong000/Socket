@@ -200,7 +200,7 @@ def sentRequest(client, server, seq, part, length):
         client.settimeout(timeout)
 
         try:
-            packetReceived, _ = client.recvfrom(2 * 1024)
+            packetReceived, _ = client.recvfrom(6 * 1024)
             if not packetReceived:
                 return None
 
@@ -224,7 +224,6 @@ def sentRequest(client, server, seq, part, length):
     client.settimeout(None)
 
     if retries == max_retries:
-
         return None
 
 
@@ -245,7 +244,7 @@ def receiveChunk(pipe, chunkSize, part, processPipe, server):
         # print(progress)
         processPipe.send(progress)
 
-    # print(1)
+    # Gửi thông tin đã hoàn thành chunk
     sentRequest(client, server, -1, part, length)
 
     pipe.send(data)
@@ -362,7 +361,7 @@ def start_client():
                 oldSize = newSize
             else:
                 oldSize = getFileSize("Client/input.txt")
-            time.sleep(5)
+        time.sleep(5)
 
     except KeyboardInterrupt:
         seq = socketSendDataWithSeq(client, server_address, "FIN", seq)
