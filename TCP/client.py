@@ -190,6 +190,7 @@ def start_client(serverIP, serverPort, folder):
 
 
     except KeyboardInterrupt:
+        sendNumber(-2, receiver[0])
         time.sleep(3)
         print("[INFO] Da ket thuc chuong trinh")
         for clientSocket in receiver:
